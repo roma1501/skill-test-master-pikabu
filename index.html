@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Мастер трюков: трассы в небе</title>
+    <link rel="icon" type="image/webp" href="assets/ui/ic-flags.webp">
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #14161a;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        input, textarea, [contenteditable] { -webkit-user-select: text; user-select: text; }
+        img { -webkit-user-drag: none; }
+        #world3d {
+            position: fixed;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            display: block;
+            outline: none;
+            touch-action: none;
+        }
+        @font-face { font-family: 'Oswald STM'; font-weight: 700; font-display: swap; src: url('assets/fonts/oswald-cyrillic-700-normal.woff2?v=1.0.2-093b929d') format('woff2'); unicode-range: U+0400-045F, U+0490-0491, U+2116; }
+        @font-face { font-family: 'Oswald STM'; font-weight: 700; font-display: swap; src: url('assets/fonts/oswald-latin-700-normal.woff2?v=1.0.2-093b929d') format('woff2'); unicode-range: U+0000-00FF, U+2000-206F; }
+        #loading-screen {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            gap: 14px;
+            background: #14161a repeating-linear-gradient(45deg, rgba(255,255,255,.025) 0 6px, rgba(0,0,0,.1) 6px 12px);
+            z-index: 1000;
+            font-family: 'Oswald STM', 'Arial Narrow', Impact, sans-serif;
+        }
+        #loading-screen::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 10px; background: repeating-linear-gradient(-45deg, #c5ef5c 0 18px, #14161a 18px 36px); }
+        #loading-screen::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 10px; background: repeating-linear-gradient(-45deg, #c5ef5c 0 18px, #14161a 18px 36px); }
+        .loading-text {
+            font: 500 16px 'Oswald STM', sans-serif;
+            letter-spacing: .12em;
+            text-transform: uppercase;
+            color: #8e96a3;
+            text-align: center;
+            min-height: 1em;
+        }
+        .loading-bar {
+            width: min(320px, 74vw);
+            height: 12px;
+            background: #2b2f37;
+            clip-path: polygon(6px 0, 100% 0, calc(100% - 6px) 100%, 0 100%);
+            overflow: hidden;
+        }
+        .loading-progress {
+            height: 100%;
+            width: 0%;
+            background: #c5ef5c;
+            transition: width 0.3s ease;
+        }
+        #loading-title { margin: 0; font: 700 italic clamp(30px, 7vw, 60px)/1 'Oswald STM', Impact, sans-serif; color: #f3f5f2; text-align: center; max-width: 90vw; text-transform: uppercase; letter-spacing: .02em; text-shadow: 0 4px 0 #000; }
+        .stm-emblem { width: clamp(84px, 16vh, 150px); height: clamp(84px, 16vh, 150px); object-fit: contain; filter: drop-shadow(0 6px 0 rgba(0,0,0,.5)); }
+        .engine-mark { position: absolute; right: 16px; bottom: 22px; width: 40px; height: 40px; object-fit: contain; opacity: .55; }
+        #loading-percent { font: 700 22px 'Oswald STM', sans-serif; color: #c5ef5c; }
+        #loading-retry { padding: 12px 28px; border: 0; background: #c5ef5c; color: #15180f; font: 700 18px 'Oswald STM', sans-serif; text-transform: uppercase; cursor: pointer; clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%); }
+    </style>
+</head>
+<body>
+    <canvas id="world3d"></canvas>
+    <div id="loading-screen" role="status" aria-busy="true" aria-live="polite">
+        <img class="stm-emblem" src="assets/ui/ic-flags.webp" alt="" aria-hidden="true">
+        <h1 id="loading-title">Skill Test Master</h1>
+        <img class="engine-mark" src="assets/branding/lory-engine.png" alt="" aria-hidden="true">
+        <div id="loading-percent">0%</div>
+        <div class="loading-bar" id="loading-meter" role="progressbar" aria-label="Loading" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="loading-progress"></div></div>
+        <div class="loading-text" data-t="loading">Загрузка…</div>
+        <button id="loading-retry" type="button" hidden></button>
+    </div>
+
+    <!-- Порядок значим: Constants.js первым (остальные читают его глобалы), main.js последним -->
+    <script src="https://games.pikabu.ru/sdk/sdk.js"></script>
+<script src="js/Constants.js?v=1.0.2-093b929d"></script>
+    <!-- 1.40 ads-ui: поле игры на десктопе не шире 2:1 (Playgama); вторым — его resize идёт раньше обработчиков движка -->
+    <script src="js/ViewCap.js?v=1.0.2-093b929d"></script>
+    <script src="libs/simplex-noise.js?v=1.0.2-093b929d"></script>
+    <script src="libs/babylon.js?v=1.0.2-093b929d"></script>
+    <script src="js/Maps.js?v=1.0.2-093b929d"></script>
+    <script src="js/Maps2D.js?v=1.0.2-093b929d"></script>
+    <script src="js/World2D.js?v=1.0.2-093b929d"></script>
+    <script src="js/World3D.js?v=1.0.2-093b929d"></script>
+    <script src="js/Terrain3D.js?v=1.0.2-093b929d"></script>
+    <script src="js/CameraControl.js?v=1.0.2-093b929d"></script>
+    <!-- 1.40: камера не заслоняется сценой (столкновение, полупрозрачные заслоны) -->
+    <script src="js/CameraSight.js?v=1.0.2-093b929d"></script>
+    <script src="js/Model3D.js?v=1.0.2-093b929d"></script>
+    <script src="js/ModelFBX.js?v=1.0.2-093b929d"></script>
+    <script src="js/ModelOBJ.js?v=1.0.2-093b929d"></script>
+    <script src="js/ModelGLTF.js?v=1.0.2-093b929d"></script>
+    <script src="js/Location3D.js?v=1.0.2-093b929d"></script>
+    <!-- world-a: Rig.js (риги и клипы), Nav.js (коллизии, высоты, пути) -->
+    <script src="js/Rig.js?v=1.0.2-093b929d"></script>
+    <script src="js/Nav.js?v=1.0.2-093b929d"></script>
+    <!-- 1.30 мир (world-b): уровни графики и время суток -->
+    <script src="js/Quality.js?v=1.0.2-093b929d"></script>
+    <script src="js/Sky3D.js?v=1.0.2-093b929d"></script>
+    <script src="js/Pause.js?v=1.0.2-093b929d"></script>
+    <script src="js/Sound.js?v=1.0.2-093b929d"></script>
+    <script src="js/Lang.js?v=1.0.2-093b929d"></script>
+    <script src="js/Platform.js?v=1.0.2-093b929d"></script>
+    <!-- Адаптеры площадок (Platform.register): Playgama; игра добавляет свои здесь же, после Platform.js -->
+    <script src="js/PlatformPlaygama.js?v=1.0.2-093b929d"></script>
+    <!-- Адаптеры Telegram Mini App, CrazyGames, Android-обёртки и сборки test (detect() выбирает площадку) -->
+    <script src="js/PlatformTelegram.js?v=1.0.2-093b929d"></script>
+    <script src="js/PlatformCrazy.js?v=1.0.2-093b929d"></script>
+    <script src="js/PlatformPikabu.js?v=1.0.2-093b929d"></script>
+    <script src="js/PlatformAndroid.js?v=1.0.2-093b929d"></script>
+    <script src="js/PlatformTest.js?v=1.0.2-093b929d"></script>
+    <script src="js/LoadingScreen.js?v=1.0.2-093b929d"></script>
+    <script src="js/ParticleFX.js?v=1.0.2-093b929d"></script>
+    <script src="js/Telemetry.js?v=1.0.2-093b929d"></script>
+    <!-- 1.30 systems-b: магазин косметики, Daily Gift, колесо фортуны (логика без UI, опт-ин: Shop/DailyGift/Wheel.init в Game.js) -->
+    <script src="js/Shop.js?v=1.0.2-093b929d"></script>
+    <script src="js/DailyGift.js?v=1.0.2-093b929d"></script>
+    <script src="js/Wheel.js?v=1.0.2-093b929d"></script>
+    <!-- 1.30 systems-a: ввод, раскладка HUD, обучение. Opt-in: игра сама зовёт Input.init / HudLayout.init / Tutorial.init -->
+    <script src="js/HudLayout.js?v=1.0.2-093b929d"></script>
+    <script src="js/Input.js?v=1.0.2-093b929d"></script>
+    <script src="js/Tutorial.js?v=1.0.2-093b929d"></script>
+    <script src="js/LiveWater3D.js?v=1.0.2-093b929d"></script>
+    <!-- 1.40 motion: физический блочный персонаж (opt-in). Порядок значим: MotionMath (GM) -> Humanoid -> MotionMatch -> CharacterPhysics -> Ragdoll -> Character -->
+    <script src="js/MotionMath.js?v=1.0.2-093b929d"></script>
+    <script src="js/Humanoid.js?v=1.0.2-093b929d"></script>
+    <script src="js/MotionMatch.js?v=1.0.2-093b929d"></script>
+    <script src="js/CharacterPhysics.js?v=1.0.2-093b929d"></script>
+    <script src="js/Ragdoll.js?v=1.0.2-093b929d"></script>
+    <script src="js/Character.js?v=1.0.2-093b929d"></script>
+    <!-- 1.40 obby (ветка obby): трасса из деталей карты, тело героя, боты и их чат, вид. Опт-ин: игра сама зовёт ObbyCourse.build / ObbyBots.init -->
+    <script src="js/ObbyCourse.js?v=1.0.2-093b929d"></script>
+    <script src="js/ObbyBody.js?v=1.0.2-093b929d"></script>
+    <script src="js/ObbyChat.js?v=1.0.2-093b929d"></script>
+    <script src="js/ObbyBots.js?v=1.0.2-093b929d"></script>
+    <script src="js/ObbyCourseView.js?v=1.0.2-093b929d"></script>
+    <script src="js/ObbyAvatar.js?v=1.0.2-093b929d"></script>
+    <!-- Скрипты игры (js/Game.js и её модули) — здесь, до main.js -->
+    <script src="js/GameCarModels.js?v=1.0.2-093b929d"></script>
+    <script src="js/GameCars.js?v=1.0.2-093b929d"></script>
+    <script src="js/GameTurbines.js?v=1.0.2-093b929d"></script>
+    <script src="js/GameCar.js?v=1.0.2-093b929d"></script>
+    <script src="js/GameCarView.js?v=1.0.2-093b929d"></script>
+    <script src="js/GameCamera.js?v=1.0.2-093b929d"></script>
+    <script src="js/GameBots.js?v=1.0.2-093b929d"></script>
+    <script src="js/GameTrack.js?v=1.0.2-093b929d"></script>
+    <script src="js/GameHud.js?v=1.0.2-093b929d"></script>
+    <script src="js/Game.js?v=1.0.2-093b929d"></script>
+    <script src="js/main.js?v=1.0.2-093b929d"></script>
+    <script>
+        // Игровая область: долгий тап и ПКМ не открывают меню браузера, картинки не
+        // тянутся, текст не выделяется — кроме настоящих полей ввода.
+        (() => {
+            const isField = t => t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable);
+            for (const type of ['contextmenu', 'dragstart', 'selectstart']) {
+                document.addEventListener(type, e => { if (!isField(e.target)) e.preventDefault(); });
+            }
+        })();
+    </script>
+</body>
+</html>
